@@ -1,364 +1,655 @@
+
 /*
- * MURAL - El Bote de los 100 Kilos
- * Colaboración y persistencia con Supabase
+ * EL BOTE DE LOS 100 KILOS
+ * Colaboración con Supabase
+ * Versión con alerta visual de crisis
  */
 
 (() => {
   "use strict";
 
-  const TABLES = ["mesa1", "mesa2", "mesa3", "mesa4"];
-  const SYNC_INTERVAL = 2500;
+  const MESAS = ["mesa1", "mesa2", "mesa3", "mesa4"];
+  const INTERVALO = 2500;
 
-  let db = null;
-  let sessionCode = null;
-  let role = null;
-  let connected = false;
-  let syncing = false;
-  let lastSnapshot = "";
-  let lastError = "";
+  let db;
+  let codigo = null;
+  let rol = null;
+  let conectado = false;
+  let sincronizando = false;
+  let ultimaVersion = "";
+  let crisisNotificada = false;
+  let intervaloActivo = null;
 
-  const originalMove = window.moveItem;
-  const originalClear = window.clearBoat;
-  const originalCrisis = window.applyCrisisToAllTeams;
-
-  function message(text) {
-    const status = document.getElementById("collab-status");
-    if (status) status.textContent = text;
+  function mostrarEstado(mensaje) {
+    const elemento = document.getElementById("collab-status");
+    if (elemento) elemento.textContent = mensaje;
   }
 
-  function errorText(error) {
+  function mensajeError(error) {
     return error?.message || String(error);
   }
 
-  async function rpc(name, params = {}) {
-    const { data, error } = await db.rpc(name, params);
+  async function ejecutar(nombre, parametros = {}) {
+    const { data, error } = await db.rpc(nombre, parametros);
     if (error) throw error;
     return data;
   }
 
-  async function initialize() {
-    const url = window.SUPABASE_URL;
-    const key = window.SUPABASE_KEY;
-
-    if (!url || !key || key.includes("PEGA_AQUI")) {
-      alert("Falta configurar Supabase en config.js");
-      return;
-    }
-
-    if (!window.supabase?.createClient) {
-      alert("No se cargó la biblioteca de Supabase");
-      return;
-    }
-
-    db = window.supabase.createClient(url, key);
-
-    const { data, error } = await db.auth.getSession();
-    if (error) throw error;
-
-    if (!data.session) {
-      const result = await db.auth.signInAnonymously();
-      if (result.error) throw result.error;
-    }
-
-    showAccessPanel();
-  }
-
-  function showAccessPanel() {
+  function crearPantallaAcceso() {
     if (document.getElementById("collab-panel")) return;
 
     const panel = document.createElement("div");
     panel.id = "collab-panel";
+
     panel.style.cssText = `
-      position:fixed;inset:0;z-index:9999;
+      position:fixed;
+      inset:0;
+      z-index:9999;
       background:rgba(5,10,25,.96);
-      display:flex;align-items:center;
-      justify-content:center;padding:20px;
-      font-family:Arial,sans-serif;color:white;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      color:white;
+      font-family:Arial,sans-serif;
     `;
 
     panel.innerHTML = `
-      <div style="background:#1e293b;padding:28px;
-        border-radius:16px;width:100%;max-width:440px">
-        <h2 style="font-size:22px;font-weight:bold">
+      <div style="
+        width:100%;
+        max-width:440px;
+        padding:30px;
+        background:#1e293b;
+        border:1px solid #475569;
+        border-radius:18px;
+      ">
+        <h2 style="
+          font-size:24px;
+          font-weight:800;
+          margin-bottom:12px;
+        ">
           El Bote de los 100 Kilos
         </h2>
-        <p style="margin:12px 0;color:#cbd5e1">
-          Seleccioná cómo querés participar.
+
+        <p style="color:#cbd5e1;margin-bottom:24px">
+          Taller colaborativo de gestión de la demanda
         </p>
 
         <label>Nombre del taller</label>
-        <input id="collab-title" value="Taller de Demanda"
-          style="width:100%;padding:10px;color:#111;
-          margin:8px 0;border-radius:6px">
 
-        <button id="collab-create"
-          style="background:#2563eb;padding:12px;
-          width:100%;border-radius:8px;margin:8px 0">
+        <input
+          id="collab-title"
+          value="Taller de Demanda"
+          style="
+            width:100%;
+            padding:12px;
+            margin:8px 0;
+            color:#111;
+            border-radius:8px;
+          "
+        >
+
+        <button id="collab-create" style="
+          width:100%;
+          padding:14px;
+          background:#2563eb;
+          border-radius:8px;
+          font-weight:bold;
+          margin:8px 0;
+        ">
           Crear sesión como facilitador
         </button>
 
-        <hr style="margin:18px 0;border-color:#475569">
+        <hr style="
+          border-color:#475569;
+          margin:24px 0;
+        ">
 
         <label>Código de sesión</label>
-        <input id="collab-code" placeholder="Código del taller"
-          style="width:100%;padding:10px;color:#111;
-          margin:8px 0;border-radius:6px">
 
-        <label>Mi mesa</label>
-        <select id="collab-team"
-          style="width:100%;padding:10px;color:#111;
-          margin:8px 0;border-radius:6px">
+        <input
+          id="collab-code"
+          placeholder="Ingresá el código"
+          style="
+            width:100%;
+            padding:12px;
+            margin:8px 0;
+            color:#111;
+            border-radius:8px;
+          "
+        >
+
+        <label>Seleccioná tu mesa</label>
+
+        <select id="collab-team" style="
+          width:100%;
+          padding:12px;
+          margin:8px 0;
+          color:#111;
+          border-radius:8px;
+        ">
           <option value="mesa1">Mesa 1</option>
           <option value="mesa2">Mesa 2</option>
           <option value="mesa3">Mesa 3</option>
           <option value="mesa4">Mesa 4</option>
         </select>
 
-        <button id="collab-join"
-          style="background:#059669;padding:12px;
-          width:100%;border-radius:8px;margin-top:10px">
+        <button id="collab-join" style="
+          width:100%;
+          padding:14px;
+          margin-top:12px;
+          background:#059669;
+          border-radius:8px;
+          font-weight:bold;
+        ">
           Ingresar al taller
         </button>
 
-        <p id="collab-status"
-          style="margin-top:14px;color:#fbbf24"></p>
+        <p id="collab-status" style="
+          color:#fbbf24;
+          margin-top:16px;
+          font-size:13px;
+        "></p>
       </div>
     `;
 
     document.body.appendChild(panel);
 
-    document.getElementById("collab-create").onclick =
-      createSession;
-    document.getElementById("collab-join").onclick =
-      joinSession;
+    document.getElementById("collab-create")
+      .addEventListener("click", crearSesion);
+
+    document.getElementById("collab-join")
+      .addEventListener("click", ingresarSesion);
   }
 
-  async function createSession() {
-    try {
-      message("Creando sesión...");
-      const title =
-        document.getElementById("collab-title").value;
+  async function iniciarConexion() {
+    if (!window.SUPABASE_URL || !window.SUPABASE_KEY) {
+      throw new Error("Falta configurar Supabase.");
+    }
 
-      const code = await rpc("mural_create", {
-        p_title: title
+    if (!window.supabase?.createClient) {
+      throw new Error("No se cargó Supabase JS.");
+    }
+
+    db = window.supabase.createClient(
+      window.SUPABASE_URL,
+      window.SUPABASE_KEY
+    );
+
+    const { data, error } = await db.auth.getSession();
+
+    if (error) throw error;
+
+    if (!data.session) {
+      const resultado = await db.auth.signInAnonymously();
+      if (resultado.error) throw resultado.error;
+    }
+
+    crearPantallaAcceso();
+  }
+
+  async function crearSesion() {
+    try {
+      mostrarEstado("Creando sesión...");
+
+      const titulo = document.getElementById(
+        "collab-title"
+      ).value;
+
+      codigo = await ejecutar("mural_create", {
+        p_title: titulo
       });
 
-      sessionCode = code;
-      role = "facilitador";
-      await startSession();
+      rol = "facilitador";
 
-      alert("Sesión creada. Código: " + code);
+      await comenzar();
+
+      alert(
+        "Sesión creada correctamente.\n\n" +
+        "Código para compartir: " + codigo
+      );
+
     } catch (error) {
-      message(errorText(error));
+      mostrarEstado(mensajeError(error));
     }
   }
 
-  async function joinSession() {
+  async function ingresarSesion() {
     try {
-      message("Ingresando...");
-      const code = document.getElementById("collab-code")
-        .value.trim().toUpperCase();
+      mostrarEstado("Conectando...");
 
-      const team = document.getElementById("collab-team")
-        .value;
+      codigo = document.getElementById(
+        "collab-code"
+      ).value.trim().toUpperCase();
 
-      const result = await rpc("mural_join", {
-        p_code: code,
-        p_team: team
+      const mesa = document.getElementById(
+        "collab-team"
+      ).value;
+
+      if (!codigo) {
+        throw new Error("Ingresá el código de sesión.");
+      }
+
+      const resultado = await ejecutar("mural_join", {
+        p_code: codigo,
+        p_team: mesa
       });
 
-      sessionCode = code;
-      role = result.role;
-      await startSession();
+      rol = resultado.role;
+
+      await comenzar();
+
     } catch (error) {
-      message(errorText(error));
+      mostrarEstado(mensajeError(error));
     }
   }
 
-  async function startSession() {
-    connected = true;
+  function mostrarIdentificacion() {
+    const anterior = document.getElementById(
+      "collab-session-label"
+    );
 
-    try {
-      await sync();
-    } catch (error) {
-      connected = false;
-      throw error;
-    }
+    if (anterior) anterior.remove();
 
-    document.getElementById("collab-panel").remove();
+    const etiqueta = document.createElement("div");
 
-    const label = document.createElement("div");
-    label.id = "collab-session-label";
-    label.style.cssText = `
-      position:fixed;bottom:12px;right:12px;
-      background:#0f172a;color:white;
-      padding:10px 14px;border:1px solid #475569;
-      border-radius:8px;z-index:100;
+    etiqueta.id = "collab-session-label";
+
+    etiqueta.style.cssText = `
+      position:fixed;
+      bottom:12px;
+      right:12px;
+      z-index:100;
+      background:#0f172a;
+      border:1px solid #475569;
+      border-radius:9px;
+      padding:10px 14px;
+      color:white;
       font:12px Arial,sans-serif;
     `;
 
-    label.textContent =
-      "Sesión: " + sessionCode + " | " + role;
+    etiqueta.textContent =
+      "Sesión: " + codigo + " | " + rol;
 
-    document.body.appendChild(label);
-
-    if (role !== "facilitador") {
-      window.switchTeam(role);
-      document.querySelectorAll(".team-tab")
-        .forEach(button => {
-          button.style.display =
-            button.id === "tab-" + role ? "" : "none";
-        });
-
-      const crisisButton =
-        document.querySelector(
-          'button[onclick="triggerCrisisModal()"]'
-        );
-      if (crisisButton) crisisButton.style.display = "none";
-    }
-
-    setInterval(() => {
-      if (connected) sync().catch(console.error);
-    }, SYNC_INTERVAL);
+    document.body.appendChild(etiqueta);
   }
 
-  async function sync() {
-    if (!connected || syncing) return;
-    syncing = true;
+  function restringirInterfaz() {
+    if (rol === "facilitador") return;
+
+    if (typeof window.switchTeam === "function") {
+      window.switchTeam(rol);
+    }
+
+    // Ocultar botones de otras mesas.
+    document.querySelectorAll(
+      '[onclick*="switchTeam"]'
+    ).forEach(boton => {
+      const accion = boton.getAttribute("onclick") || "";
+
+      if (!accion.includes(rol)) {
+        boton.style.display = "none";
+      }
+    });
+
+    // Ocultar controles de crisis.
+    document.querySelectorAll(
+      '[onclick*="triggerCrisisModal"]'
+    ).forEach(boton => {
+      boton.style.display = "none";
+    });
+
+    // Impedir cambios de mesa desde el código global.
+    if (typeof window.switchTeam === "function") {
+      const cambiarMesa = window.switchTeam;
+
+      window.switchTeam = function(mesa) {
+        if (mesa !== rol) return;
+        return cambiarMesa(mesa);
+      };
+    }
+  }
+
+  async function comenzar() {
+    conectado = true;
+    ultimaVersion = "";
+    crisisNotificada = false;
 
     try {
-      const snapshot = await rpc("mural_snapshot", {
-        p_code: sessionCode
+      await sincronizar();
+    } catch (error) {
+      conectado = false;
+      throw error;
+    }
+
+    const panel = document.getElementById("collab-panel");
+    if (panel) panel.remove();
+
+    restringirInterfaz();
+    mostrarIdentificacion();
+
+    if (intervaloActivo) {
+      clearInterval(intervaloActivo);
+    }
+
+    intervaloActivo = setInterval(() => {
+      sincronizar().catch(error => {
+        console.error("Error de sincronización:", error);
       });
+    }, INTERVALO);
+  }
 
-      if (!snapshot) return;
+  function mostrarAlertaCrisis() {
+    if (document.getElementById("alerta-crisis")) return;
 
-      const fingerprint = JSON.stringify({
-        choices: snapshot.choices,
-        crisis: snapshot.crisis
-      });
+    const overlay = document.createElement("div");
 
-      if (fingerprint === lastSnapshot) return;
-      lastSnapshot = fingerprint;
+    overlay.id = "alerta-crisis";
 
-       // Notificación de crisis para todas las mesas.
-      @keyframes crisisEntrada {
-              from {
-                opacity: 0;
-                transform: scale(.88) translateY(20px);
-              }
-              to {
-                opacity: 1;
-                transform: scale(1) translateY(0);
-              }
-            }
-          `;
+    overlay.style.cssText = `
+      position:fixed;
+      inset:0;
+      z-index:99999;
+      background:rgba(3,7,18,.92);
+      backdrop-filter:blur(8px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      font-family:Arial,sans-serif;
+    `;
 
-          document.head.appendChild(style);
-          document.body.appendChild(overlay);
+    overlay.innerHTML = `
+      <div style="
+        width:100%;
+        max-width:480px;
+        padding:32px;
+        border-radius:22px;
+        background:linear-gradient(
+          145deg,#991b1b,#450a0a
+        );
+        border:1px solid #ef4444;
+        box-shadow:0 30px 90px rgba(0,0,0,.7);
+        color:white;
+        text-align:center;
+        animation:entradaCrisis .4s ease-out;
+      ">
 
-          overlay.querySelector("#cerrar-alerta-crisis")
-            .addEventListener("click", () => {
-              overlay.remove();
-            });
+        <div style="
+          font-size:12px;
+          letter-spacing:3px;
+          font-weight:800;
+          color:#fecaca;
+        ">
+          EVENTO EXTRAORDINARIO
+        </div>
+
+        <div style="
+          font-size:54px;
+          margin:20px 0 10px;
+        ">
+          🚨
+        </div>
+
+        <h2 style="
+          font-size:30px;
+          font-weight:900;
+          margin-bottom:16px;
+        ">
+          ¡CRISIS A BORDO!
+        </h2>
+
+        <p style="
+          font-size:16px;
+          line-height:1.6;
+          color:#fee2e2;
+          margin-bottom:24px;
+        ">
+          Una situación inesperada altera
+          las condiciones del desafío.
+          Tu equipo debe revisar sus decisiones.
+        </p>
+
+        <div style="
+          background:rgba(0,0,0,.3);
+          padding:22px;
+          border-radius:14px;
+          margin-bottom:24px;
+        ">
+          <div style="
+            font-size:12px;
+            letter-spacing:1px;
+            color:#fecaca;
+          ">
+            NUEVA CARGA OBLIGATORIA
+          </div>
+
+          <div style="
+            font-size:46px;
+            font-weight:900;
+            margin:12px 0;
+          ">
+            +15 KG
+          </div>
+
+          <p style="
+            font-size:14px;
+            color:#fee2e2;
+          ">
+            Reorganicen el bote sin superar
+            su capacidad máxima de 100 kg.
+          </p>
+        </div>
+
+        <button id="confirmar-alerta-crisis" style="
+          width:100%;
+          padding:16px;
+          background:white;
+          color:#7f1d1d;
+          border:0;
+          border-radius:10px;
+          font-size:14px;
+          font-weight:800;
+          cursor:pointer;
+        ">
+          ENTENDIDO, CONTINUAR EL DESAFÍO
+        </button>
+
+      </div>
+    `;
+
+    if (!document.getElementById("estilos-crisis")) {
+      const estilos = document.createElement("style");
+
+      estilos.id = "estilos-crisis";
+
+      estilos.textContent = `
+        @keyframes entradaCrisis {
+          from {
+            opacity:0;
+            transform:translateY(25px) scale(.9);
+          }
+          to {
+            opacity:1;
+            transform:translateY(0) scale(1);
+          }
         }
+      `;
+
+      document.head.appendChild(estilos);
+    }
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector("#confirmar-alerta-crisis")
+      .addEventListener("click", () => {
+        overlay.remove();
+      });
+  }
+
+  async function sincronizar() {
+    if (!conectado || sincronizando) return;
+
+    sincronizando = true;
+
+    try {
+      const datos = await ejecutar("mural_snapshot", {
+        p_code: codigo
+      });
+
+      if (!datos) return;
+
+      // Notificación para las mesas participantes.
+      if (
+        datos.crisis &&
+        rol !== "facilitador" &&
+        !crisisNotificada
+      ) {
+        crisisNotificada = true;
+        mostrarAlertaCrisis();
       }
 
-      for (const teamId of TABLES) {
-        if (role !== "facilitador" && role !== teamId) {
+      const version = JSON.stringify({
+        choices: datos.choices,
+        crisis: datos.crisis
+      });
+
+      if (version === ultimaVersion) return;
+
+      ultimaVersion = version;
+
+      if (!window.teamsState || !window.BASE_ITEMS) {
+        throw new Error(
+          "No se encontraron los datos originales del mural."
+        );
+      }
+
+      for (const mesaId of MESAS) {
+        if (
+          rol !== "facilitador" &&
+          rol !== mesaId
+        ) {
           continue;
         }
 
-        const team = window.teamsState[teamId];
-        if (!team) continue;
+        const estado = window.teamsState[mesaId];
+        if (!estado) continue;
 
-        const allItems = [
+        const elementos = [
           ...window.BASE_ITEMS,
-          ...(snapshot.crisis ? [window.CRISIS_ITEM] : [])
+          ...(datos.crisis && window.CRISIS_ITEM
+            ? [window.CRISIS_ITEM]
+            : [])
         ];
 
-        const decisions = (snapshot.choices || [])
-          .filter(choice => choice.team === teamId);
+        const decisiones = (datos.choices || [])
+          .filter(d => d.team === mesaId);
 
-        const inBoat = new Set(
-          decisions
-            .filter(choice => choice.zone === "boat")
-            .map(choice => choice.item_id)
+        const enBote = new Set(
+          decisiones
+            .filter(d => d.zone === "boat")
+            .map(d => d.item_id)
         );
 
-        team.boat = allItems
-          .filter(item => inBoat.has(item.id))
+        estado.boat = elementos
+          .filter(item => enBote.has(item.id))
           .map(item => ({ ...item }));
 
-        team.beach = allItems
-          .filter(item => !inBoat.has(item.id))
+        estado.beach = elementos
+          .filter(item => !enBote.has(item.id))
           .map(item => ({ ...item }));
       }
 
-      window.renderCurrentTeam();
+      if (typeof window.renderCurrentTeam === "function") {
+        window.renderCurrentTeam();
+      }
 
     } finally {
-      syncing = false;
+      sincronizando = false;
     }
   }
 
-  window.moveItem = async function(itemId, targetZone) {
-    if (!connected) return;
+  window.moveItem = async function(itemId, zona) {
+    if (!conectado) return;
 
-    const team = window.currentTeam;
+    const mesa = window.currentTeam;
 
-    if (role !== "facilitador" && role !== team) return;
+    if (
+      rol !== "facilitador" &&
+      rol !== mesa
+    ) return;
 
     try {
-      await rpc("mural_move", {
-        p_code: sessionCode,
-        p_team: team,
+      await ejecutar("mural_move", {
+        p_code: codigo,
+        p_team: mesa,
         p_item_id: itemId,
-        p_zone: targetZone
+        p_zone: zona
       });
 
-      lastSnapshot = "";
-      await sync();
+      ultimaVersion = "";
+      await sincronizar();
+
     } catch (error) {
-      alert("No se pudo guardar: " + errorText(error));
+      alert(
+        "No se pudo guardar el movimiento:\n" +
+        mensajeError(error)
+      );
     }
   };
 
   window.clearBoat = async function() {
-    if (!connected) return;
+    if (!conectado) return;
+
+    const mesa = window.currentTeam;
+
+    if (
+      rol !== "facilitador" &&
+      rol !== mesa
+    ) return;
 
     try {
-      await rpc("mural_clear", {
-        p_code: sessionCode,
-        p_team: window.currentTeam
+      await ejecutar("mural_clear", {
+        p_code: codigo,
+        p_team: mesa
       });
 
-      lastSnapshot = "";
-      await sync();
+      ultimaVersion = "";
+      await sincronizar();
+
     } catch (error) {
-      alert(errorText(error));
+      alert(mensajeError(error));
     }
   };
 
   window.applyCrisisToAllTeams = async function() {
-    if (!connected || role !== "facilitador") return;
+    if (!conectado || rol !== "facilitador") return;
 
     try {
-      await rpc("mural_crisis", {
-        p_code: sessionCode
+      await ejecutar("mural_crisis", {
+        p_code: codigo
       });
 
-      window.closeCrisisModal();
-      lastSnapshot = "";
-      await sync();
+      if (
+        typeof window.closeCrisisModal === "function"
+      ) {
+        window.closeCrisisModal();
+      }
+
+      ultimaVersion = "";
+      await sincronizar();
+
     } catch (error) {
-      alert(errorText(error));
+      alert(mensajeError(error));
     }
   };
 
   window.addEventListener("load", () => {
-    initialize().catch(error => {
-      alert("Error de conexión: " + errorText(error));
+    iniciarConexion().catch(error => {
+      alert(
+        "Error de conexión:\n" +
+        mensajeError(error)
+      );
     });
   });
 
