@@ -241,68 +241,19 @@
       if (fingerprint === lastSnapshot) return;
       lastSnapshot = fingerprint;
 
-       // Avisar a cada mesa cuando se activa la crisis.
-      if (
-        snapshot.crisis &&
-        role !== "facilitador" &&
-        !sessionStorage.getItem(
-          "crisis-avisada-" + sessionCode
-        )
-      ) {
-        sessionStorage.setItem(
-          "crisis-avisada-" + sessionCode,
-          "1"
-        );
+       // Notificación de crisis para todas las mesas.
+      if (snapshot.crisis && role !== "facilitador") {
+        if (!window.crisisNotificada) {
+          window.crisisNotificada = true;
 
-        const aviso = document.createElement("div");
-        aviso.style.cssText = `
-          position: fixed;
-          inset: 0;
-          z-index: 99999;
-          background: rgba(0,0,0,0.85);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-          font-family: Arial, sans-serif;
-        `;
-
-        aviso.innerHTML = `
-          <div style="
-            background: #7f1d1d;
-            color: white;
-            padding: 32px;
-            border-radius: 16px;
-            max-width: 480px;
-            text-align: center;
-            box-shadow: 0 0 50px rgba(239,68,68,.4);
-          ">
-            <h2 style="font-size: 28px; font-weight: bold;">
-              🚨 ¡CRISIS A BORDO!
-            </h2>
-            <p style="font-size: 18px; margin: 20px 0;">
-              Surgió una situación inesperada.
-              Recibieron una nueva carga de 15 kg.
-              Revisen sus prioridades y reorganizen
-              el bote sin superar su capacidad.
-            </p>
-            <button id="confirmar-crisis" style="
-              background: white;
-              color: #7f1d1d;
-              padding: 12px 24px;
-              border-radius: 8px;
-              font-weight: bold;
-              cursor: pointer;
-            ">
-              Entendido, reorganizar el bote
-            </button>
-          </div>
-        `;
-
-        document.body.appendChild(aviso);
-
-        aviso.querySelector("#confirmar-crisis")
-          .addEventListener("click", () => aviso.remove());
+          alert(
+            "🚨 ¡CRISIS A BORDO!\n\n" +
+            "Se ha producido una situación inesperada.\n\n" +
+            "Recibieron una nueva carga de 15 kg.\n\n" +
+            "Revisen sus prioridades y reorganicen el bote " +
+            "sin superar su capacidad."
+          );
+        }
       }
 
       for (const teamId of TABLES) {
