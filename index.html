@@ -81,6 +81,15 @@
     .overload-glow {
       animation: pulse-red 1.2s infinite;
     }
+    .round-finished .sticky-card { cursor:not-allowed !important; opacity:.85; }
+    .round-finished .sticky-card:hover { transform:none; }
+    .round-finished .drop-zone { pointer-events:none; }
+    #round-result { position:fixed;inset:0;z-index:10000;background:rgba(2,6,23,.92);display:flex;align-items:center;justify-content:center;padding:20px; }
+    #round-result .result-box { max-width:570px;width:100%;padding:32px;border-radius:24px;background:#0f172a;color:white;border:2px solid #475569;text-align:center;box-shadow:0 25px 80px #000a; }
+    #round-result.sunk .result-box { border-color:#ef4444;animation:sink-in 1.3s ease both; }
+    #round-result.safe .result-box { border-color:#10b981;animation:float-in 1s ease both; }
+    @keyframes sink-in { 0% {transform:translateY(-30px) rotate(-3deg);opacity:.2} 65% {transform:translateY(8px) rotate(3deg);opacity:1} 100% {transform:translateY(0) rotate(0)} }
+    @keyframes float-in { from {transform:translateY(18px);opacity:0} to {transform:translateY(0);opacity:1} }
   </style>
 </head>
 <body class="mural-canvas text-slate-100 min-h-screen flex flex-col font-sans select-none antialiased">
@@ -109,16 +118,18 @@
 
     <!-- Timer & Facilitator Controls -->
     <div class="flex items-center gap-3">
-      <!-- Countdown Widget -->
-      <div class="flex items-center gap-2 bg-slate-950 px-3.5 py-1.5 rounded-lg border border-slate-800">
-        <i data-lucide="timer" class="w-4 h-4 text-amber-400 animate-pulse"></i>
-        <span id="timer-display" class="font-mono text-base font-black text-amber-300">07:00</span>
-        <button onclick="toggleTimer()" id="timer-btn" class="text-slate-400 hover:text-white ml-1 p-1 hover:bg-slate-800 rounded">
-          <i data-lucide="play" id="timer-icon" class="w-3.5 h-3.5"></i>
-        </button>
-        <button onclick="resetTimer()" class="text-slate-500 hover:text-slate-300 p-1 hover:bg-slate-800 rounded" title="Reiniciar">
-          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-        </button>
+      <!-- Temporizador colaborativo -->
+      <div class="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-700">
+        <i data-lucide="timer" class="w-4 h-4 text-amber-400"></i>
+        <span id="timer-display" class="font-mono text-lg font-black text-amber-300">07:00</span>
+        <span id="timer-state" class="text-[10px] text-slate-400">PREPARADO</span>
+        <div id="timer-controls" class="flex items-center gap-2">
+          <label class="text-xs text-slate-300">Minutos
+            <input id="timer-minutes" type="number" min="1" max="30" value="7" class="w-14 bg-slate-800 text-white rounded p-1 ml-1 border border-slate-600" />
+          </label>
+          <button onclick="toggleTimer()" id="timer-btn" class="bg-blue-600 text-white text-xs font-bold rounded px-3 py-1.5">Iniciar</button>
+          <button onclick="resetTimer()" id="timer-reset" class="bg-slate-700 text-white text-xs rounded px-2 py-1.5">Reiniciar</button>
+        </div>
       </div>
 
       <!-- Facilitator Trigger Crisis -->
@@ -612,6 +623,7 @@
 
     // Mover Item entre Playa y Bote
     function moveItem(itemId, targetZone) {
+      if (window.collabRoundLocked?.()) return;
       const state = teamsState[currentTeam];
       const sourceZone = targetZone === 'boat' ? 'beach' : 'boat';
       
@@ -625,6 +637,7 @@
 
     // Drag and Drop Handlers
     function handleDragStart(e, itemId, fromZone) {
+      if (window.collabRoundLocked?.()) { e.preventDefault(); return; }
       draggedItemId = itemId;
       draggedFromZone = fromZone;
       e.dataTransfer.setData('text/plain', itemId);
@@ -646,6 +659,7 @@
     }
 
     function handleDrop(e, targetZone) {
+      if (window.collabRoundLocked?.()) { e.preventDefault(); return; }
       e.preventDefault();
       e.currentTarget.classList.remove('drag-over');
       if (draggedItemId && draggedFromZone !== targetZone) {
@@ -657,6 +671,7 @@
 
     // Vaciar Bote
     function clearBoat() {
+      if (window.collabRoundLocked?.()) return;
       const state = teamsState[currentTeam];
       state.beach = [...state.beach, ...state.boat];
       state.boat = [];
@@ -700,7 +715,7 @@
         statusLabel.className = 'text-emerald-400';
 
         // Disparar confetti sutil
-        confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
+        // El resultado final se celebra una sola vez en collab.js.
 
       } else if (boatWeight > 100) {
         // Sobrecarga / Hundimiento
@@ -757,47 +772,9 @@
       document.getElementById('debrief-modal').classList.add('hidden');
     }
 
-    // Temporizador de 7 Minutos
-    let timerDuration = 7 * 60;
-    let timerInterval = null;
-    let isRunning = false;
-
-    function toggleTimer() {
-      if (isRunning) {
-        clearInterval(timerInterval);
-        isRunning = false;
-        document.getElementById('timer-icon').setAttribute('data-lucide', 'play');
-      } else {
-        isRunning = true;
-        document.getElementById('timer-icon').setAttribute('data-lucide', 'pause');
-        timerInterval = setInterval(() => {
-          if (timerDuration <= 0) {
-            clearInterval(timerInterval);
-            isRunning = false;
-            alert("⏰ ¡TIEMPO CUMPLIDO! Manos arriba, revisemos qué decidió cada mesa.");
-            return;
-          }
-          timerDuration--;
-          updateTimerDisplay();
-        }, 1000);
-      }
-      lucide.createIcons();
-    }
-
-    function resetTimer() {
-      clearInterval(timerInterval);
-      isRunning = false;
-      timerDuration = 7 * 60;
-      updateTimerDisplay();
-      document.getElementById('timer-icon').setAttribute('data-lucide', 'play');
-      lucide.createIcons();
-    }
-
-    function updateTimerDisplay() {
-      const minutes = Math.floor(timerDuration / 60).toString().padStart(2, '0');
-      const seconds = (timerDuration % 60).toString().padStart(2, '0');
-      document.getElementById('timer-display').textContent = `${minutes}:${seconds}`;
-    }
+    // Las funciones de tiempo se conectan a Supabase desde collab.js.
+    function toggleTimer() { return window.collabTimerToggle?.(); }
+    function resetTimer() { return window.collabTimerReset?.(); }
     //conexión entre mural original y collab.js
      window.BASE_ITEMS = BASE_ITEMS;
     window.CRISIS_ITEM = CRISIS_ITEM;

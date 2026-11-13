@@ -19,6 +19,11 @@
   let ultimaVersion = "";
   let crisisNotificada = false;
   let intervaloActivo = null;
+  let timerData = null;
+  let timerOffsetMs = 0;
+  let finalShown = false;
+  let timerTick = null;
+  let timerBusy = false;
 
   function mostrarEstado(mensaje) {
     const elemento = document.getElementById("collab-status");
@@ -327,6 +332,9 @@
 
     restringirInterfaz();
     mostrarIdentificacion();
+    document.getElementById("timer-controls").style.display = rol === "facilitador" ? "flex" : "none";
+    if (timerTick) clearInterval(timerTick);
+    timerTick = setInterval(renderTimer, 250);
 
     if (intervaloActivo) {
       clearInterval(intervaloActivo);
@@ -509,6 +517,11 @@
         mostrarAlertaCrisis();
       }
 
+      timerData = datos.timer || null;
+      timerOffsetMs = datos.server_now ? Date.parse(datos.server_now) - Date.now() : timerOffsetMs;
+      renderTimer();
+      if (isFinished()) showResults(datos);
+
       const version = JSON.stringify({
         choices: datos.choices,
         crisis: datos.crisis
@@ -570,7 +583,7 @@
   }
 
   window.moveItem = async function(itemId, zona) {
-    if (!conectado) return;
+    if (!conectado || isFinished()) return;
 
     const mesa = window.currentTeam;
 
@@ -599,7 +612,7 @@
   };
 
   window.clearBoat = async function() {
-    if (!conectado) return;
+    if (!conectado || isFinished()) return;
 
     const mesa = window.currentTeam;
 
@@ -623,7 +636,7 @@
   };
 
   window.applyCrisisToAllTeams = async function() {
-    if (!conectado || rol !== "facilitador") return;
+    if (!conectado || rol !== "facilitador" || isFinished()) return;
 
     try {
       await ejecutar("mural_crisis", {
@@ -643,6 +656,98 @@
       alert(mensajeError(error));
     }
   };
+
+  function secondsLeft() {
+    if (!timerData) return 420;
+    if (timerData.status !== "running") return Math.max(0, Number(timerData.remaining_seconds) || 0);
+    const elapsed = (Date.now() + timerOffsetMs - Date.parse(timerData.started_at)) / 1000;
+    return Math.max(0, Math.ceil(Number(timerData.remaining_seconds) - elapsed));
+  }
+
+  function isFinished() {
+    return !!timerData && (timerData.status === "finished" ||
+      (timerData.status === "running" && secondsLeft() <= 0));
+  }
+  window.collabRoundLocked = isFinished;
+
+  function renderTimer() {
+    if (!timerData) return;
+    const seconds = secondsLeft();
+    const display = document.getElementById("timer-display");
+    if (!display) return;
+    display.textContent = `${String(Math.floor(seconds / 60)).padStart(2,"0")}:${String(seconds % 60).padStart(2,"0")}`;
+    const finished = isFinished();
+    const status = document.getElementById("timer-state");
+    if (status) status.textContent = finished ? "FINALIZADO" : ({ready:"PREPARADO",running:"EN CURSO",paused:"PAUSADO"}[timerData.status] || "");
+    document.body.classList.toggle("round-finished", finished);
+    const input = document.getElementById("timer-minutes");
+    const start = document.getElementById("timer-btn");
+    const reset = document.getElementById("timer-reset");
+    if (input) {
+      if (document.activeElement !== input) input.value = Math.round(timerData.duration_seconds / 60);
+      input.disabled = timerData.status !== "ready" || timerBusy;
+    }
+    if (start) {
+      start.textContent = timerData.status === "running" ? "Pausar" : timerData.status === "paused" ? "Reanudar" : "Iniciar";
+      start.disabled = finished || timerBusy;
+    }
+    if (reset) reset.disabled = finished || timerBusy;
+    if (finished && !finalShown) {
+      finalShown = true;
+      sincronizar().catch(console.error);
+    }
+  }
+
+  async function timerAction(action, minutes) {
+    if (!conectado || rol !== "facilitador" || timerBusy) return;
+    timerBusy = true;
+    try {
+      const response = await ejecutar("mural_timer_control", {
+        p_code: codigo, p_action: action, p_minutes: minutes ?? null
+      });
+      timerData = response.timer;
+      timerOffsetMs = Date.parse(response.server_now) - Date.now();
+      renderTimer();
+      await sincronizar();
+    } catch (error) { alert("Temporizador: " + mensajeError(error)); }
+    finally { timerBusy = false; renderTimer(); }
+  }
+  window.collabTimerToggle = function() {
+    if (!timerData || isFinished()) return;
+    if (timerData.status === "running") return timerAction("pause");
+    if (timerData.status === "paused") return timerAction("resume");
+    const minutes = Number(document.getElementById("timer-minutes").value);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 30) {
+      alert("Elegí entre 1 y 30 minutos."); return;
+    }
+    return timerAction("start", minutes);
+  };
+  window.collabTimerReset = () => timerAction("reset");
+
+  function teamWeight(team, choices, crisis) {
+    const weights = Object.fromEntries([...(window.BASE_ITEMS || []), ...(crisis ? [window.CRISIS_ITEM] : [])].filter(Boolean).map(i=>[i.id,i.weight]));
+    return (choices || []).filter(c=>c.team===team && c.zone==="boat").reduce((n,c)=>n+(weights[c.item_id]||0),0);
+  }
+
+  function showResults(datos) {
+    if (document.getElementById("round-result")) return;
+    const teams = rol === "facilitador" ? MESAS : [rol];
+    const weights = teams.map(t=>({team:t, weight:teamWeight(t,datos.choices,datos.crisis)}));
+    const current = weights.find(x=>x.team===window.currentTeam) || weights[0];
+    const sunk = current.weight > 100;
+    const overlay = document.createElement("div");
+    overlay.id = "round-result";
+    overlay.className = sunk ? "sunk" : "safe";
+    overlay.innerHTML = `<div class="result-box">
+      <div style="font-size:56px">${sunk ? "🌊" : "⛵"}</div>
+      <h2 style="font-size:30px;font-weight:900;margin:12px 0">${rol === "facilitador" ? "RESULTADOS DE LA RONDA" : sunk ? "¡EL BOTE SE HUNDIÓ!" : "¡EL BOTE SE SALVÓ!"}</h2>
+      <p style="color:#cbd5e1;margin-bottom:20px">Tiempo cumplido. Las decisiones quedaron bloqueadas.</p>
+      ${weights.map(x=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:12px;border-bottom:1px solid #334155"><strong>${x.team.replace("mesa","Mesa ")}</strong><span>${x.weight} / 100 kg — <strong style="color:${x.weight>100?'#f87171':'#34d399'}">${x.weight>100?'HUNDIDO':'A FLOTE'}</strong></span></div>`).join("")}
+      <button id="close-round-result" style="margin-top:24px;padding:12px 20px;border-radius:10px;background:#334155;color:white;font-weight:700">Ver tablero bloqueado</button>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#close-round-result").onclick = () => overlay.remove();
+  }
 
   window.addEventListener("load", () => {
     iniciarConexion().catch(error => {
