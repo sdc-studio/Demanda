@@ -740,18 +740,13 @@
       document.getElementById('crisis-modal').classList.add('hidden');
     }
 
-    function applyCrisisToAllTeams() {
-      Object.keys(teamsState).forEach(teamKey => {
-        const team = teamsState[teamKey];
-        const exists = team.beach.some(i => i.id === CRISIS_ITEM.id) || team.boat.some(i => i.id === CRISIS_ITEM.id);
-        if (!exists) {
-          team.beach.unshift(JSON.parse(JSON.stringify(CRISIS_ITEM)));
-        }
-      });
-      closeCrisisModal();
-      renderCurrentTeam();
-      alert("🚨 ¡Crisis Inyectada! La tarjeta 'Batería Marina (+15 kg)' fue añadida a la playa de todas las mesas.");
-    }
+   function applyCrisisToAllTeams() {
+  if (typeof window.applyCrisisToAllTeams === "function") {
+    return window.applyCrisisToAllTeams();
+  }
+
+  alert("La conexión colaborativa no está disponible.");
+}
 
     // Modales de Debrief
     function openDebriefModal() {
