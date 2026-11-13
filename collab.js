@@ -242,17 +242,25 @@
       lastSnapshot = fingerprint;
 
        // Notificación de crisis para todas las mesas.
-      if (snapshot.crisis && role !== "facilitador") {
-        if (!window.crisisNotificada) {
-          window.crisisNotificada = true;
+      @keyframes crisisEntrada {
+              from {
+                opacity: 0;
+                transform: scale(.88) translateY(20px);
+              }
+              to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+              }
+            }
+          `;
 
-          alert(
-            "🚨 ¡CRISIS A BORDO!\n\n" +
-            "Se ha producido una situación inesperada.\n\n" +
-            "Recibieron una nueva carga de 15 kg.\n\n" +
-            "Revisen sus prioridades y reorganicen el bote " +
-            "sin superar su capacidad."
-          );
+          document.head.appendChild(style);
+          document.body.appendChild(overlay);
+
+          overlay.querySelector("#cerrar-alerta-crisis")
+            .addEventListener("click", () => {
+              overlay.remove();
+            });
         }
       }
 
