@@ -22,6 +22,7 @@
   let timerData = null;
   let timerOffsetMs = 0;
   let finalShown = false;
+  let resultDismissed = false;
   let timerTick = null;
   let timerBusy = false;
 
@@ -730,7 +731,7 @@
   }
 
   function showResults(datos) {
-    if (document.getElementById("round-result")) return;
+    if (resultDismissed || document.getElementById("round-result")) return;
     const teams = rol === "facilitador" ? MESAS : [rol];
     const weights = teams.map(t=>({team:t, weight:teamWeight(t,datos.choices,datos.crisis)}));
     const current = weights.find(x=>x.team===window.currentTeam) || weights[0];
@@ -746,7 +747,10 @@
       <button id="close-round-result" style="margin-top:24px;padding:12px 20px;border-radius:10px;background:#334155;color:white;font-weight:700">Ver tablero bloqueado</button>
     </div>`;
     document.body.appendChild(overlay);
-    overlay.querySelector("#close-round-result").onclick = () => overlay.remove();
+    overlay.querySelector("#close-round-result").onclick = () => {
+    resultDismissed = true;
+    overlay.remove();
+    };
   }
 
   window.addEventListener("load", () => {
