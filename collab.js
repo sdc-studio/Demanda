@@ -347,35 +347,65 @@ async function crearSesion() {
     }
   }
 
-  function mostrarIdentificacion() {
-    const anterior = document.getElementById(
-      "collab-session-label"
-    );
+  
+function mostrarIdentificacion() {
+  const anterior = document.getElementById("collab-session-label");
+  if (anterior) anterior.remove();
 
-    if (anterior) anterior.remove();
+  const etiqueta = document.createElement("div");
+  etiqueta.id = "collab-session-label";
 
-    const etiqueta = document.createElement("div");
+  etiqueta.style.cssText = `
+    position:fixed;
+    bottom:12px;
+    right:12px;
+    z-index:10001;
+    background:#0f172a;
+    border:1px solid #475569;
+    border-radius:12px;
+    padding:14px;
+    color:white;
+    font:13px Arial,sans-serif;
+    box-shadow:0 10px 30px rgba(0,0,0,.4);
+  `;
 
-    etiqueta.id = "collab-session-label";
+  const titulo = document.createElement("div");
+  titulo.textContent = "Sesión: " + codigo + " | " + rol;
+  titulo.style.marginBottom = "8px";
+  etiqueta.appendChild(titulo);
 
-    etiqueta.style.cssText = `
-      position:fixed;
-      bottom:12px;
-      right:12px;
-      z-index:100;
-      background:#0f172a;
-      border:1px solid #475569;
-      border-radius:9px;
-      padding:10px 14px;
+  if (rol === "facilitador") {
+    const boton = document.createElement("button");
+    boton.textContent = "Copiar código";
+    boton.style.cssText = `
+      background:#2563eb;
       color:white;
-      font:12px Arial,sans-serif;
+      border:0;
+      padding:10px 16px;
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:bold;
+      width:100%;
     `;
 
-    etiqueta.textContent =
-      "Sesión: " + codigo + " | " + rol;
+    boton.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(String(codigo));
+        boton.textContent = "✓ Código copiado";
+      } catch (error) {
+        window.prompt(
+          "Copiá el código de sesión:",
+          String(codigo)
+        );
+      }
+    };
 
-    document.body.appendChild(etiqueta);
+    etiqueta.appendChild(boton);
   }
+
+  document.body.appendChild(etiqueta);
+}
+
 
   function restringirInterfaz() {
     if (rol === "facilitador") return;
