@@ -210,10 +210,25 @@
 
       await comenzar();
 
-      alert(
-        "Sesión creada correctamente.\n\n" +
-        "Código para compartir: " + codigo
-      );
+     document.body.appendChild(ventana);
+
+    const campo = ventana.querySelector("#codigo-para-copiar");
+    campo.value = codigo;
+
+    ventana.querySelector("#boton-copiar-codigo").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(codigo);
+      ventana.querySelector("#boton-copiar-codigo").textContent = "✓ Código copiado";
+    } catch (error) {
+      campo.focus();
+      campo.select();
+      ventana.querySelector("#boton-copiar-codigo").textContent = "Seleccionado: presioná Ctrl + C";
+    }
+    };
+
+ventana.querySelector("#boton-cerrar-codigo").onclick = () => {
+  ventana.remove();
+};
 
     } catch (error) {
       mostrarEstado(mensajeError(error));
