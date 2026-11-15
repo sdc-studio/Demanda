@@ -194,46 +194,128 @@
     crearPantallaAcceso();
   }
 
-  async function crearSesion() {
-    try {
-      mostrarEstado("Creando sesión...");
 
-      const titulo = document.getElementById(
-        "collab-title"
-      ).value;
+async function crearSesion() {
+  try {
+    mostrarEstado("Creando sesión...");
 
-      codigo = await ejecutar("mural_create", {
-        p_title: titulo
-      });
+    const titulo = document.getElementById("collab-title").value;
 
-      rol = "facilitador";
+    codigo = await ejecutar("mural_create", {
+      p_title: titulo
+    });
 
-      await comenzar();
+    rol = "facilitador";
 
-     document.body.appendChild(ventana);
+    await comenzar();
+
+    const ventana = document.createElement("div");
+    ventana.id = "modal-codigo-sesion";
+
+    ventana.style.cssText = `
+      position:fixed;
+      inset:0;
+      z-index:99999;
+      background:rgba(2,6,23,.92);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      font-family:Inter,Arial,sans-serif;
+    `;
+
+    ventana.innerHTML = `
+      <div style="
+        background:#0f172a;
+        border:1px solid #475569;
+        border-radius:20px;
+        padding:32px;
+        width:100%;
+        max-width:420px;
+        color:white;
+        text-align:center;
+        box-shadow:0 25px 80px rgba(0,0,0,.6);
+      ">
+        <h2 style="font-size:24px;font-weight:800;margin-bottom:12px">
+          Sesión creada correctamente
+        </h2>
+
+        <p style="color:#94a3b8;margin-bottom:20px">
+          Compartí este código con las mesas
+        </p>
+
+        <input id="codigo-para-copiar"
+          readonly
+          style="
+            width:100%;
+            background:#020617;
+            color:#60a5fa;
+            font-size:24px;
+            font-weight:800;
+            text-align:center;
+            padding:14px;
+            border:1px solid #475569;
+            border-radius:10px;
+            margin-bottom:16px;
+          "
+        >
+
+        <button id="boton-copiar-codigo" style="
+          width:100%;
+          padding:14px;
+          background:#2563eb;
+          color:white;
+          border:0;
+          border-radius:10px;
+          font-weight:700;
+          cursor:pointer;
+          margin-bottom:10px;
+        ">
+          Copiar código
+        </button>
+
+        <button id="boton-cerrar-codigo" style="
+          width:100%;
+          padding:12px;
+          background:#334155;
+          color:white;
+          border:0;
+          border-radius:10px;
+          cursor:pointer;
+        ">
+          Continuar al mural
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(ventana);
 
     const campo = ventana.querySelector("#codigo-para-copiar");
     campo.value = codigo;
 
     ventana.querySelector("#boton-copiar-codigo").onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(codigo);
-      ventana.querySelector("#boton-copiar-codigo").textContent = "✓ Código copiado";
-    } catch (error) {
-      campo.focus();
-      campo.select();
-      ventana.querySelector("#boton-copiar-codigo").textContent = "Seleccionado: presioná Ctrl + C";
-    }
+      const boton = ventana.querySelector("#boton-copiar-codigo");
+
+      try {
+        await navigator.clipboard.writeText(codigo);
+        boton.textContent = "✓ Código copiado";
+      } catch (error) {
+        campo.focus();
+        campo.select();
+        boton.textContent = "Seleccionado: presioná Ctrl + C";
+      }
     };
 
-ventana.querySelector("#boton-cerrar-codigo").onclick = () => {
-  ventana.remove();
-};
+    ventana.querySelector("#boton-cerrar-codigo").onclick = () => {
+      ventana.remove();
+    };
 
-    } catch (error) {
-      mostrarEstado(mensajeError(error));
-    }
+  } catch (error) {
+    mostrarEstado(mensajeError(error));
+    alert("Error al crear la sesión: " + mensajeError(error));
   }
+}
+
 
   async function ingresarSesion() {
     try {
